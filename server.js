@@ -9,8 +9,10 @@ const app = express();
 
 // MongoDB bağlantısı
 mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
+  dbName: 'pi-wallet',
+  authSource: 'admin',
+  retryWrites: true,
+  w: 'majority'
 })
 .then(() => console.log('MongoDB connected successfully'))
 .catch(err => {
