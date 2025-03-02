@@ -164,7 +164,7 @@ const CloseButton = styled.button`
 
 // API URL'ini environment'a göre ayarla
 const API_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-app-name.onrender.com'  // Render'dan aldığınız URL
+  ? 'https://wallet-8xci.onrender.com'  // Render URL'imiz
   : 'http://localhost:3001';
 
 function App() {

