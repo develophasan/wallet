@@ -1,8 +1,7 @@
 const express = require('express');
 const path = require('path');
-const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const dotenv = require('dotenv');
 const db = require('./database');
 
 dotenv.config();
@@ -14,7 +13,6 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
   
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -25,35 +23,74 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
-// Auth middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Yetkilendirme gerekli' });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ success: false, error: 'Geçersiz token' });
-    }
-    req.user = user;
-    next();
-  });
-};
+// JWT Secret key kontrolü
+if (!process.env.JWT_SECRET) {
+  console.error('JWT_SECRET environment variable is not set!');
+  process.env.JWT_SECRET = 'default_secret_key_123'; // Geçici çözüm
+}
 
 // Login endpoint'i
 app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
+  try {
+    const { username, password } = req.body;
+    console.log('Login attempt:', { username, password });
 
-  if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
-    const token = jwt.sign({ username }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    res.json({ success: true, token });
-  } else {
-    res.status(401).json({ success: false, error: 'Geçersiz kullanıcı adı veya şifre' });
+    if (username === process.env.ADMIN_USERNAME && 
+        password === process.env.ADMIN_PASSWORD) {
+      const token = jwt.sign(
+        { username }, 
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+      console.log('Login successful');
+      res.json({ success: true, token });
+    } else {
+      console.log('Invalid credentials');
+      res.status(401).json({ 
+        success: false, 
+        error: 'Geçersiz kullanıcı adı veya şifre' 
+      });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Giriş işlemi sırasında bir hata oluştu' 
+    });
   }
 });
+
+// Token doğrulama middleware
+const authenticateToken = (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Token bulunamadı' 
+      });
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+      if (err) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Geçersiz token' 
+        });
+      }
+      req.user = user;
+      next();
+    });
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Kimlik doğrulama hatası' 
+    });
+  }
+};
 
 // Passphrase kaydetme endpoint'i
 app.post('/api/save-passphrase', (req, res) => {
