@@ -6,6 +6,9 @@ const db = require('./database');
 
 dotenv.config();
 
+// JWT Secret key kontrolü ve tanımlaması
+const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_key_123456789';
+
 const app = express();
 
 // CORS ayarları
@@ -23,23 +26,19 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
-// JWT Secret key kontrolü
-if (!process.env.JWT_SECRET) {
-  console.error('JWT_SECRET environment variable is not set!');
-  process.env.JWT_SECRET = 'default_secret_key_123'; // Geçici çözüm
-}
-
 // Login endpoint'i
 app.post('/api/login', (req, res) => {
   try {
     const { username, password } = req.body;
     console.log('Login attempt:', { username, password });
 
-    if (username === process.env.ADMIN_USERNAME && 
-        password === process.env.ADMIN_PASSWORD) {
+    const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'adminwallet';
+
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
       const token = jwt.sign(
         { username }, 
-        process.env.JWT_SECRET,
+        JWT_SECRET,
         { expiresIn: '24h' }
       );
       console.log('Login successful');
@@ -73,7 +72,7 @@ const authenticateToken = (req, res, next) => {
       });
     }
 
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    jwt.verify(token, JWT_SECRET, (err, user) => {
       if (err) {
         return res.status(403).json({ 
           success: false, 
