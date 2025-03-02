@@ -10,9 +10,9 @@ const app = express();
 // MongoDB bağlantısı
 mongoose.connect(process.env.MONGODB_URI, {
   dbName: 'pi-wallet',
-  authSource: 'admin',
-  retryWrites: true,
-  w: 'majority'
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  family: 4
 })
 .then(() => console.log('MongoDB connected successfully'))
 .catch(err => {

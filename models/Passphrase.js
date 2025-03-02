@@ -13,15 +13,13 @@ const passphraseSchema = new mongoose.Schema({
   userAgent: String,
   uniqueId: {
     type: String,
-    default: () => Math.random().toString(36).substring(2) + Date.now().toString(36),
-    unique: true
+    default: () => Math.random().toString(36).substring(2) + Date.now().toString(36)
   }
+}, { 
+  timestamps: true 
 });
 
-// Timestamp'e göre index oluştur
-passphraseSchema.index({ timestamp: -1 });
-
-// Benzersiz index oluştur
+// Tek bir index tanımlama
 passphraseSchema.index({ uniqueId: 1 }, { unique: true });
 
 module.exports = mongoose.model('Passphrase', passphraseSchema); 
