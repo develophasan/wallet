@@ -46,10 +46,14 @@ function AdminLogin({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  const API_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://wallet-8xci.onrender.com'
+    : 'http://localhost:3001';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/login', {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

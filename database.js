@@ -1,10 +1,8 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-// Render.com için disk yolu
-const dbPath = process.env.NODE_ENV === 'production' 
-  ? '/data/database.sqlite'
-  : path.resolve(__dirname, 'database.sqlite');
+// Render.com'da geçici dosya sistemini kullan
+const dbPath = path.resolve(__dirname, 'database.sqlite');
 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {

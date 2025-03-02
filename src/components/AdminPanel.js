@@ -58,13 +58,17 @@ function AdminPanel({ token, onLogout }) {
   const [passphrases, setPassphrases] = useState([]);
   const [error, setError] = useState('');
 
+  const API_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://wallet-8xci.onrender.com'
+    : 'http://localhost:3001';
+
   useEffect(() => {
     fetchPassphrases();
   }, [token]);
 
   const fetchPassphrases = async () => {
     try {
-      const response = await fetch('/api/admin/passphrases', {
+      const response = await fetch(`${API_URL}/api/admin/passphrases`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -112,7 +116,7 @@ function AdminPanel({ token, onLogout }) {
               <Td>{item.passphrase}</Td>
               <Td>{item.ip}</Td>
               <Td>{item.userAgent}</Td>
-              <Td>{new Date(item.createdAt).toLocaleString('tr-TR')}</Td>
+              <Td>{item.createdAt ? new Date(item.createdAt).toLocaleString('tr-TR') : '-'}</Td>
             </tr>
           ))}
         </tbody>
