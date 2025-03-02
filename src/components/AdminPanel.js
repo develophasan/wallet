@@ -54,19 +54,59 @@ const Error = styled.div`
   margin: 20px 0;
 `;
 
+const HeaderButtons = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const RefreshButton = styled.button`
+  padding: 10px 20px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  
+  &:hover {
+    background-color: #45a049;
+  }
+
+  &:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+  }
+`;
+
+const LoadingSpinner = styled.div`
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 function AdminPanel({ token, onLogout }) {
   const [passphrases, setPassphrases] = useState([]);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const API_URL = process.env.NODE_ENV === 'production' 
     ? 'https://wallet-8xci.onrender.com'
     : 'http://localhost:3001';
 
-  useEffect(() => {
-    fetchPassphrases();
-  }, [token]);
-
   const fetchPassphrases = async () => {
+    setIsLoading(true);
+    setError('');
+    
     try {
       const response = await fetch(`${API_URL}/api/admin/passphrases`, {
         headers: {
@@ -82,8 +122,14 @@ function AdminPanel({ token, onLogout }) {
       }
     } catch (error) {
       setError('Veriler yüklenirken bir hata oluştu');
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchPassphrases();
+  }, [token]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -94,7 +140,16 @@ function AdminPanel({ token, onLogout }) {
     <Container>
       <Header>
         <Title>Admin Paneli - Passphrase Listesi</Title>
-        <LogoutButton onClick={handleLogout}>Çıkış Yap</LogoutButton>
+        <HeaderButtons>
+          <RefreshButton 
+            onClick={fetchPassphrases} 
+            disabled={isLoading}
+          >
+            {isLoading ? <LoadingSpinner /> : '🔄'}
+            {isLoading ? 'Yenileniyor...' : 'Yenile'}
+          </RefreshButton>
+          <LogoutButton onClick={handleLogout}>Çıkış Yap</LogoutButton>
+        </HeaderButtons>
       </Header>
 
       {error && <Error>{error}</Error>}
@@ -119,6 +174,13 @@ function AdminPanel({ token, onLogout }) {
               <Td>{item.createdAt ? new Date(item.createdAt).toLocaleString('tr-TR') : '-'}</Td>
             </tr>
           ))}
+          {passphrases.length === 0 && !isLoading && (
+            <tr>
+              <Td colSpan="5" style={{ textAlign: 'center' }}>
+                Henüz kayıtlı veri bulunmuyor
+              </Td>
+            </tr>
+          )}
         </tbody>
       </Table>
     </Container>
